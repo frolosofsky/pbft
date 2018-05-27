@@ -1,14 +1,15 @@
 CXX = clang++
+CXX_FLAGS = -std=c++14 -Wall -Wextra -pedantic -Werror -Wimplicit-fallthrough -g
 EXE = pbft
 TEST = pbft_tests
 
 .PHONY: run test clean
 
 $(EXE): pbft_types.cpp main.cpp
-	$(CXX) $^ -o $@ -std=c++14 -Wall -Wextra -pedantic -g
+	$(CXX) $^ -o $@ $(CXX_FLAGS)
 
 $(TEST): pbft_types.cpp pbft_tests.cpp
-	$(CXX) $^ -o $@ -std=c++14 -Wall -Wextra -pedantic -g
+	$(CXX) $^ -o $@ $(CXX_FLAGS)
 
 run: $(EXE)
 	@ ./$(EXE)

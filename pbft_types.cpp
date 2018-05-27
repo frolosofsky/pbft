@@ -5,10 +5,6 @@ uintptr_t Node::id() const {
     return reinterpret_cast<uintptr_t>(this);
 }
 
-std::shared_ptr<Link> Node::link(std::shared_ptr<Node> const &node) {
-    return Link::make(shared_from_this(), node);
-}
-
 void Node::link(uintptr_t node, std::shared_ptr<Link> const &link) {
     auto ins = _links.emplace(node, link);
     assert(ins.second);
@@ -31,13 +27,21 @@ bool Node::unlink(uintptr_t node, bool release_link) {
     return true;
 }
 
-bool Node::send(uintptr_t node, Message &&msg) {
+bool Node::send_to(uintptr_t node, Message &&msg) {
     auto it = _links.find(node);
     if(it == _links.end())
         return false;
     auto link_ptr = it->second.lock();
     assert(link_ptr != nullptr);
     return link_ptr->send(node, std::move(msg));
+}
+
+void Node::broadcast(Message &&msg) {
+    for(auto &l : _links) {
+        auto link_ptr = l.second.lock();
+        assert(link_ptr != nullptr);
+        link_ptr->send(l.first, Message(msg));
+    }
 }
 
 void Node::put(uintptr_t src_id, Message &&msg) {
