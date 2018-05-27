@@ -51,7 +51,7 @@ public:
             [[clang::fallthrough]];
         case Type::Prepare:
             ++_approves;
-            if(_approves >= _f * 2 + 1) {
+            if(_approves >= _f * 2) {
                 _state = Type::Prepared;
                 _approves = 1;
             }

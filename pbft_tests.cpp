@@ -140,9 +140,6 @@ void pbft_state_f1_test() {
     assert(state.approves() == 1);
     assert(state.state() == State::Type::Prepare);
     assert(state.prepare(0, 0));
-    assert(state.approves() == 2);
-    assert(state.state() == State::Type::Prepare);
-    assert(state.prepare(0, 0));
     assert(state.approves() == 1);
     assert(state.state() == State::Type::Prepared);
     assert(not(state.prepare(0, 0)));
@@ -191,11 +188,6 @@ void pbft_messaging_f1_test() {
             n->on_tick();
     };
 
-    for(auto &n : nodes) {
-        std::cout << n->id() << " " << Node::test_interface(*n).links().size() << std::endl;
-    }
-
-    std::cout << "---" << std::endl;
     client->on_tick();
     assert(nodes[0]->state().state() == State::Type::Init);
     tick_links();
@@ -228,6 +220,66 @@ void pbft_messaging_f1_test() {
     assert(nodes[3]->state().state() == State::Type::Committed);
 }
 
+void pbft_messaging_f1_dead_node_test() {
+    std::vector<std::shared_ptr<PBFTNode>> nodes = {
+        std::make_shared<PBFTNode>(PBFTNode::Role::Primary, 1),
+        std::make_shared<PBFTNode>(PBFTNode::Role::Replica, 1),
+        std::make_shared<PBFTNode>(PBFTNode::Role::Replica, 1),
+        std::make_shared<PBFTNode>(PBFTNode::Role::Replica, 1)
+    };
+    for(auto &n : nodes)
+        n->set_primary(nodes[0]);
+    std::vector<std::shared_ptr<Link>> links;
+    for(size_t i = 0; i < nodes.size() - 1; ++i) {
+        for(size_t j = i + 1; j < nodes.size(); ++j) {
+            links.emplace_back(make_link(nodes[i], nodes[j]));
+        }
+    }
+
+    nodes[1].reset(); // dead one
+
+    auto client = std::make_shared<ClientNode>();
+    auto client_link = make_link(client, nodes[0]);
+
+    auto tick_links = [&links, &client_link] {
+        client_link->on_tick();
+        for(auto &l : links)
+            l->on_tick();
+    };
+    auto tick_nodes = [&nodes] {
+        for(auto &n : nodes)
+            if(n != nullptr)
+                n->on_tick();
+    };
+
+    std::cout << " --- " << std::endl;
+    client->on_tick();
+    assert(nodes[0]->state().state() == State::Type::Init);
+    tick_links();
+    assert(nodes[0]->state().state() == State::Type::Init);
+    assert(nodes[2]->state().state() == State::Type::Init);
+    assert(nodes[3]->state().state() == State::Type::Init);
+    tick_nodes();
+    assert(nodes[0]->state().state() == State::Type::PrePrepare);
+    assert(nodes[2]->state().state() == State::Type::Init);
+    assert(nodes[3]->state().state() == State::Type::Init);
+    tick_links();
+    tick_nodes();
+    assert(nodes[0]->state().state() == State::Type::PrePrepare);
+    assert(nodes[2]->state().state() == State::Type::Prepare);
+    assert(nodes[3]->state().state() == State::Type::Prepare);
+    tick_links();
+    tick_nodes();
+    assert(nodes[0]->state().state() == State::Type::Commit);
+    assert(nodes[2]->state().state() == State::Type::Commit);
+    assert(nodes[3]->state().state() == State::Type::Commit);
+    tick_links();
+    tick_nodes();
+    assert(nodes[0]->state().state() == State::Type::Committed);
+    assert(nodes[2]->state().state() == State::Type::Committed);
+    assert(nodes[3]->state().state() == State::Type::Committed);
+}
+
 
 int main() {
     links_test();
@@ -236,5 +288,6 @@ int main() {
     pbft_state_f0_test();
     pbft_state_f1_test();
     pbft_messaging_f1_test();
+    pbft_messaging_f1_dead_node_test();
     return 0;
 }
