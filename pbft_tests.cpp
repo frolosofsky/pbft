@@ -252,7 +252,6 @@ void pbft_messaging_f1_dead_node_test() {
                 n->on_tick();
     };
 
-    std::cout << " --- " << std::endl;
     client->on_tick();
     assert(nodes[0]->state().state() == State::Type::Init);
     tick_links();
