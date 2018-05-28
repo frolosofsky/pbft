@@ -1,6 +1,5 @@
 #include "pbft_types.h"
 
-
 uintptr_t Node::id() const {
     return reinterpret_cast<uintptr_t>(this);
 }

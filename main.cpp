@@ -19,6 +19,7 @@ class PBFT_DB : public PBFTNode::SuccessStrategy {
         case Message::Type::Commit:
             assert(not("Unreachable"));
         }
+        return Message::ReadOpResponse{false, 0}; // happy gcc
     }
 
     Message::WriteOpResponse accept(Message::WriteOpRequest const &msg) {

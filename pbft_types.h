@@ -4,6 +4,7 @@
 #include <map>
 #include <list>
 #include <iostream>
+#include <cassert>
 
 using Digest = uint64_t;
 using Signature = uint64_t;
@@ -285,4 +286,5 @@ Stream &operator<<(Stream &os, Message const &m) {
     case Message::Type::Commit:
         return os << "Commit{" << m.data.commit << "}";
     }
+    return os; // happy gcc
 }

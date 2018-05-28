@@ -1,7 +1,14 @@
 #pragma once
 
+#include <cassert>
 #include "pbft_types.h"
 #include "crypto.h"
+
+#if defined (__clang__)
+#define FALLTHROUGH [[clang::fallthrough]]
+#else
+#define FALLTHROUGH
+#endif
 
 // Represents state of the pbft node.
 // Has few hacky fallthrough-s in order to cover f=0
@@ -40,6 +47,7 @@ public:
             }
             return false;
         }
+        return false; // happy gcc
     }
 
     bool prepare(uint32_t view, uint32_t req_id) {
@@ -51,7 +59,7 @@ public:
         case Type::PrePrepare:
             _state = Type::Prepare;
             _approves = 0;
-            [[clang::fallthrough]];
+            FALLTHROUGH;
         case Type::Prepare:
             ++_approves;
             if(_approves >= _f * 2) {
@@ -64,6 +72,7 @@ public:
         case Type::Committed:
             return false;
         }
+        return false; // happy gcc
     }
 
     bool commit(uint32_t view, uint32_t req_id) {
@@ -77,7 +86,7 @@ public:
         case Type::Prepared:
             _state = Type::Commit;
             _approves = 0;
-            [[clang::fallthrough]];
+            FALLTHROUGH;
         case Type::Commit:
             ++_approves;
             if(_approves >= _f * 2 + 1) {
@@ -88,6 +97,7 @@ public:
         case Type::Committed:
             return false;
         }
+        return false; // happy gcc
     }
 
 private:

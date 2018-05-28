@@ -1,9 +1,13 @@
-CXX = clang++
-CXX_FLAGS = -std=c++14 -Wall -Wextra -pedantic -Werror -Wimplicit-fallthrough -g
+CXX = g++
+CXX_FLAGS = -std=c++14 -Wall -Wextra -pedantic -Werror -g
 EXE = pbft
 TEST = pbft_tests
 
-.PHONY: run test clean
+ifeq ($(CXX),clang++)
+CXX_FLAGS := $(CXX_FLAGS) -Wimplicit-fallthrough
+endif
+
+.PHONY: run test clean docker-build docker-run
 
 $(EXE): pbft_types.cpp main.cpp
 	$(CXX) $^ -o $@ $(CXX_FLAGS)
@@ -19,3 +23,9 @@ test: $(TEST)
 
 clean:
 	rm -f $(EXE) $(TEST)
+
+docker-build:
+	docker build . -t sfrolov/pbft-ubuntu:16.04 --rm --force-rm
+
+docker-run: docker-build
+	docker run --rm -t sfrolov/pbft-ubuntu:16.04 make CXX=g++ -C /tmp/pbft-src test run
