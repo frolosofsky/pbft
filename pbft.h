@@ -3,6 +3,9 @@
 #include "pbft_types.h"
 #include "crypto.h"
 
+// Represents state of the pbft node.
+// Has few hacky fallthrough-s in order to cover f=0
+
 class State {
 public:
     enum class Type { Init, PrePrepare, Prepare, Prepared, Commit, Committed };
@@ -94,24 +97,44 @@ private:
     int _f = 1;
 };
 
+
+// The pbft node. Doesn't support change-view. You have to say which node is primary.
+// View is harcoded and 0.
+// No way to restore from broken (stuck) state.
+// Doesn't work with f=0, seems to require additional internal hops. Or `State` handles
+// it in a wrong way.
+
+// After node handles user message it signs it by its private key (node->id())
+// Maybe we need to resign it after every hop? Or sign by user?
+
 class PBFTNode : public Node {
 public:
     enum class Role { Primary, Replica };
+
+    struct SuccessStrategy {
+        virtual ~SuccessStrategy() = default;
+        virtual Message::OpResponseMessage accept(Message::OpRequestMessage const &msg) = 0;
+    };
+    using SuccessStrategyPtr = std::unique_ptr<SuccessStrategy>;
+
     PBFTNode(Role r, int f): _state(f), _role(r) { assert (f > 0); }
 
     State const &state() const { return _state; }
     Role const &role() const { return _role; }
     void set_primary(std::shared_ptr<Node> const &p) { _primary = p; }
+    void set_success_startegy(SuccessStrategyPtr &&s) { _success_strategy = std::move(s); }
 
     void on_tick() override {
         auto inbox = take_inbox();
         for(auto &mm : inbox) {
             auto const s = mm.first;
             auto &m = mm.second;
-            std::cout << id() << " <- " << m << std::endl;
             switch(m.type) {
             case Message::Type::Write:
                 process(s, std::move(m.data.write));
+                break;
+            case Message::Type::Read:
+                process(s, std::move(m.data.read));
                 break;
             case Message::Type::PrePrepare:
                 process(s, std::move(m.data.preprepare));
@@ -122,12 +145,23 @@ public:
             case Message::Type::Commit:
                 process(s, std::move(m.data.commit));
                 break;
+            case Message::Type::WriteAck:
+            case Message::Type::ReadAck:
+            case Message::Type::Response:
+                assert(not("Unreachable"));
             }
         }
     }
 
 private:
-    auto prepreare(uintptr_t client, Message::WriteOpRequest &&msg) const {
+    template<typename T>
+    bool verify_message(T const &msg) {
+        auto ptr = _primary.lock();
+        return ptr != nullptr && ::verify_message(msg.msg, msg.sig, ptr->id());
+    }
+
+    template<typename T>
+    auto prepreare(uintptr_t client, T &&msg) const {
         auto sig = signature(digest(msg), id());
         return Message::PrePrepare{std::move(msg), sig, client, _view, req_id()};
     }
@@ -140,6 +174,7 @@ private:
         return Message::Commit(std::move(msg));
     }
 
+
     void process(uintptr_t sender, Message::WriteOpRequest &&msg) {
         if(_role != Role::Primary)
             return; // only primary reacts on client requests. Change-view in TODO
@@ -148,11 +183,14 @@ private:
             broadcast(std::move(p));
     }
 
-    template<typename T>
-    bool verify_message(T const &msg) {
-        auto ptr = _primary.lock();
-        return ptr != nullptr && ::verify_message(msg.msg, msg.sig, ptr->id());
+    void process(uintptr_t sender, Message::ReadOpRequest &&msg) {
+        if(_role != Role::Primary)
+            return; // only primary reacts on client requests. Change-view in TODO
+        auto p = prepreare(sender, std::move(msg));
+        if(_state.preprepare(p.view, p.req_id))
+            broadcast(std::move(p));
     }
+
 
     void process(uintptr_t sender[[gnu::unused]], Message::PrePrepare &&msg) {
         if(_role == Role::Primary)
@@ -173,9 +211,16 @@ private:
     void process(uintptr_t sender[[gnu::unused]], Message::Commit &&msg) {
         if(!verify_message(msg))
             return;
-        if(_state.commit(msg.view, msg.req_id) && _state.state() == State::Type::Committed) {
-            std::cout << id() << " Complete!" << std::endl;
-        }
+        if(_state.commit(msg.view, msg.req_id) && _state.state() == State::Type::Committed)
+            success(msg.client, msg.msg);
+    }
+
+    void success(uintptr_t client, Message::OpRequestMessage const &msg) {
+        if(_success_strategy == nullptr)
+            return;
+        auto answer = _success_strategy->accept(msg);
+        auto sig = signature(digest(answer), id());
+        send_to(client, Message::Response{std::move(answer), sig});
     }
 
     uint32_t req_id() const {
@@ -187,4 +232,5 @@ private:
     Role _role = Role::Replica;
     uint32_t _view = 0;
     std::weak_ptr<Node> _primary;
+    SuccessStrategyPtr _success_strategy;
 };
